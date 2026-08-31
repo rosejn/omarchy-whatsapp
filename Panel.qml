@@ -924,14 +924,25 @@ Panel {
                     }
                   }
 
-                  MouseArea {
-                    anchors.fill: parent
-                    acceptedButtons: Qt.RightButton
-                    onClicked: function (event) {
-                      root.reactionTargetId = root.reactionTargetId === messageRow.modelData.id ? "" : messageRow.modelData.id
-                      event.accepted = true
-                    }
-                  }
+                }
+
+                MouseArea {
+                  id: bubbleHover
+                  anchors.fill: bubble
+                  hoverEnabled: true
+                  acceptedButtons: Qt.NoButton
+                }
+
+                PanelActionButton {
+                  id: reactionButton
+                  visible: bubbleHover.containsMouse || root.reactionTargetId === messageRow.modelData.id
+                  x: Math.min(bubble.x + bubble.width + Style.space(2), bubbleRow.width - width)
+                  y: bubble.y
+                  iconText: "\uf118"
+                  tooltipText: "Add reaction"
+                  foreground: root.secondaryForeground
+                  fontFamily: root.fontFamily
+                  onClicked: root.reactionTargetId = root.reactionTargetId === messageRow.modelData.id ? "" : messageRow.modelData.id
                 }
 
                 Row {
