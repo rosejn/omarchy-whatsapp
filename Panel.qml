@@ -928,7 +928,7 @@ Panel {
 
                 MouseArea {
                   id: bubbleHover
-                  anchors.fill: bubble
+                  anchors.fill: parent
                   hoverEnabled: true
                   acceptedButtons: Qt.NoButton
                 }
@@ -937,7 +937,7 @@ Panel {
                   id: reactionButton
                   visible: bubbleHover.containsMouse || root.reactionTargetId === messageRow.modelData.id
                   x: Math.min(bubble.x + bubble.width + Style.space(2), bubbleRow.width - width)
-                  y: bubble.y
+                  y: bubble.y + (bubble.height - height) / 2
                   iconText: "\uf118"
                   tooltipText: "Add reaction"
                   foreground: root.secondaryForeground
