@@ -955,7 +955,7 @@ Panel {
                   visible: root.reactionTargetId === messageRow.modelData.id
                   z: 10
                   x: Math.max(0, Math.min(root.reactionMenuX - width / 2, bubbleRow.width - width))
-                  y: Math.max(0, root.reactionMenuY - height - Style.space(3))
+                  y: root.reactionMenuY - height - Style.space(3)
                   spacing: Style.space(2)
 
                   Repeater {
