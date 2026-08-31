@@ -1,4 +1,4 @@
-import { chmodSync, readdirSync, readFileSync, rmSync, writeFileSync, unlinkSync } from 'node:fs'
+import { chmodSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, unlinkSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { hostname, release } from 'node:os'
 import { join } from 'node:path'
@@ -18,7 +18,7 @@ import { logger, waLogger } from './lib/logger.js'
 import { Store, normalizeJid } from './lib/store.js'
 import { Notifier } from './lib/notify.js'
 import { Bus } from './lib/server.js'
-import { extractImage, isGroupJid, isIgnorableChat, isPhotoPlaceholder, isSilent, messageText, messageType, prettyJid } from './lib/message.js'
+import { extractMedia, isGroupJid, isIgnorableChat, isPhotoPlaceholder, isSilent, messageText, messageType, prettyJid } from './lib/message.js'
 import { existingMediaPath, MediaCache } from './lib/media.js'
 import {
   applyChatNotificationPreferences,
@@ -58,6 +58,7 @@ const MSG_SERVER_ACK = 2
 const MSG_DELIVERED = 3
 const MSG_READ = 4
 const MSG_PLAYED = 5
+const MAX_AUDIO_BYTES = 16 * 1024 * 1024
 
 const store = new Store()
 const notifier = new Notifier()
@@ -229,7 +230,9 @@ function storedToWaContent(message) {
   if (message.media) {
     const node = { mimetype: message.media.mimetype }
     if (message.text && !isPhotoPlaceholder(message.text)) node.caption = message.text
-    return message.media.kind === 'sticker' ? { stickerMessage: node } : { imageMessage: node }
+    if (message.media.kind === 'sticker') return { stickerMessage: node }
+    if (message.media.kind === 'audio') return { audioMessage: node }
+    return { imageMessage: node }
   }
   if (!message.text) return undefined
   return { conversation: message.text }
@@ -297,13 +300,13 @@ function applyMessageStatus(jid, id, status) {
 
 function flatten(chatJid, message) {
   const ts = toTs(message.messageTimestamp)
-  const image = extractImage(message.message)
+  const attachment = extractMedia(message.message)
   const id = message.key?.id || `${ts}-${Math.random().toString(36).slice(2, 8)}`
   const flat = {
     id,
     ts,
     fromMe: !!message.key?.fromMe,
-    text: image ? (image.caption || messageText(message.message)) : messageText(message.message),
+    text: attachment ? (attachment.caption || messageText(message.message)) : messageText(message.message),
     type: messageType(message.message),
     senderName: senderNameFor(chatJid, message),
     senderJid: message.key?.participant ? jidNormalizedUser(message.key.participant) : '',
@@ -315,10 +318,12 @@ function flatten(chatJid, message) {
       participant: message.key?.participant || undefined
     }
   }
-  if (image) {
-    const { caption, ...payload } = image
+  if (attachment) {
+    const { caption, ...payload } = attachment
     flat.media = payload
-    flat.imagePath = existingMediaPath({ id, media: payload, imagePath: '' })
+    const cachedPath = existingMediaPath({ id, media: payload, imagePath: '' })
+    if (payload.kind === 'audio') flat.audioPath = cachedPath
+    else flat.imagePath = cachedPath
   }
   return flat
 }
@@ -1078,11 +1083,11 @@ async function markRead(jid) {
   }
 }
 
-async function refreshMissingImages(jid, list) {
+async function refreshMissingMedia(jid, list) {
   if (!sock || connection !== 'open') return
   if (typeof sock.requestPlaceholderResend !== 'function') return
   const missing = list.filter((message) => (
-    (message.type === 'imageMessage' || message.type === 'stickerMessage')
+    (message.type === 'imageMessage' || message.type === 'stickerMessage' || message.type === 'audioMessage')
     && !message.media
     && message.key?.id
   ))
@@ -1165,7 +1170,7 @@ async function handleCommand(payload, reply) {
         for (const message of list) {
           if (message.media && !existingMediaPath(message)) media.enqueue(canonical, message)
         }
-        refreshMissingImages(canonical, list).catch((err) => {
+        refreshMissingMedia(canonical, list).catch((err) => {
           logger.debug({ err, jid: canonical }, 'media: history refresh failed')
         })
       }
@@ -1204,6 +1209,44 @@ async function handleCommand(payload, reply) {
         }
       }
       reply({ t: 'ack', id, ok: true, jid: rawJid })
+      return
+    }
+
+    case 'sendAudio': {
+      const rawJid = payload.jid
+      const path = String(payload.path || '')
+      if (!rawJid) throw new Error('sendAudio: jid required')
+      if (!path.startsWith('/')) throw new Error('sendAudio: an absolute file path is required')
+      if (!sock || connection !== 'open') throw new Error('sendAudio: not connected to WhatsApp')
+      let size = 0
+      try { size = statSync(path).size } catch { throw new Error('sendAudio: audio file is unavailable') }
+      if (!size) throw new Error('sendAudio: audio file is empty')
+      if (size > MAX_AUDIO_BYTES) throw new Error('sendAudio: audio files must be 16 MB or smaller')
+
+      const extension = path.split('.').pop().toLowerCase()
+      const mimetypes = {
+        aac: 'audio/aac', flac: 'audio/flac', m4a: 'audio/mp4', mp3: 'audio/mpeg',
+        oga: 'audio/ogg', ogg: 'audio/ogg', opus: 'audio/ogg; codecs=opus', wav: 'audio/wav'
+      }
+      const canonical = store.canonicalJid(rawJid) || rawJid
+      const sent = await sock.sendMessage(rawJid, {
+        audio: { url: path },
+        mimetype: mimetypes[extension] || 'audio/ogg',
+        ptt: false
+      })
+      if (sent) {
+        if (asStatus(sent.status) < MSG_SERVER_ACK) sent.status = MSG_SERVER_ACK
+        const res = ingest(rawJid, sent)
+        if (res) {
+          const { message, canonicalTarget } = res
+          if ((message.status || 0) < MSG_SERVER_ACK) {
+            message.status = MSG_SERVER_ACK
+            store.markDirty()
+          }
+          bus.broadcast({ t: 'message', jid: canonicalTarget, message: publicMessage(message), chat: store.chat(canonicalTarget) })
+        }
+      }
+      reply({ t: 'sent', jid: canonical })
       return
     }
 
@@ -1370,7 +1413,11 @@ async function main() {
   media.getSocket = () => sock
   media.onReady = (jid, message) => {
     store.markDirty()
-    bus.broadcast({ t: 'messageMedia', jid, id: message.id, imagePath: message.imagePath || '' })
+    const kind = message.media?.kind || 'image'
+    const path = message.imagePath || message.audioPath || ''
+    if (kind === 'audio') message.audioPath = path
+    else message.imagePath = path
+    bus.broadcast({ t: 'messageMedia', jid, id: message.id, path, kind })
   }
 
   bus.snapshot = snapshot

@@ -56,7 +56,7 @@ Item {
   signal messagesLoaded(string jid, var chat, var messages)
   signal messageArrived(string jid, var message, var chat)
   signal messageStatusChanged(string jid, string messageId, int status)
-  signal messageMedia(string jid, string messageId, string imagePath)
+  signal messageMedia(string jid, string messageId, string mediaPath, string mediaKind)
   signal focusRequested(string jid)
   signal commandFailed(string command, string message)
   signal pairCodeReceived(string code)
@@ -127,6 +127,11 @@ Item {
     var payload = { t: "send", jid: jid, text: text }
     if (quotedId) payload.quoted = quotedId
     return request(payload)
+  }
+
+  function sendAudio(jid, path) {
+    if (!jid || !path || !path.length) return false
+    return request({ t: "sendAudio", jid: jid, path: path })
   }
 
   property bool setupTried: false
@@ -231,7 +236,7 @@ Item {
         break
 
       case "messageMedia":
-        root.messageMedia(frame.jid || "", frame.id || "", frame.imagePath || "")
+        root.messageMedia(frame.jid || "", frame.id || "", frame.path || frame.imagePath || "", frame.kind || "image")
         break
 
       case "focus":

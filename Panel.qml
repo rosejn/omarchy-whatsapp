@@ -1,5 +1,7 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
+import QtMultimedia
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Io
@@ -48,6 +50,11 @@ Panel {
   readonly property color secondaryForeground: Qt.darker(root.foreground, 1.5)
   readonly property int chatLimit: root.setting("chatLimit", 40)
   readonly property int messageLimit: root.setting("messageLimit", 60)
+
+  MediaPlayer {
+    id: voicePlayer
+    audioOutput: AudioOutput { volume: 1.0 }
+  }
 
   function open() { root.controller.show() }
   function close() { root.controller.hide() }
@@ -149,6 +156,22 @@ Panel {
       typingTimer.stop()
       root.client.setTyping(root.activeJid, "paused")
     }
+  }
+
+  function localPath(url) {
+    var text = String(url || "")
+    if (text.indexOf("file://") !== 0) return ""
+    return decodeURIComponent(text.substring(7))
+  }
+
+  function sendAudio(url) {
+    var path = root.localPath(url)
+    if (!path || !root.client || !root.client.ready || !root.activeJid) {
+      root.statusLine = "Cannot send audio while disconnected"
+      return
+    }
+    root.statusLine = "Sending audio…"
+    if (!root.client.sendAudio(root.activeJid, path)) root.statusLine = "Could not send audio"
   }
 
   function openWebClient() {
@@ -263,9 +286,9 @@ Panel {
       root.patchMessage(messageId, { status: status })
     }
 
-    function onMessageMedia(jid, messageId, imagePath) {
-      if (jid !== root.activeJid || !imagePath) return
-      root.patchMessage(messageId, { imagePath: imagePath })
+    function onMessageMedia(jid, messageId, mediaPath, mediaKind) {
+      if (jid !== root.activeJid || !mediaPath) return
+      root.patchMessage(messageId, mediaKind === "audio" ? { audioPath: mediaPath } : { imagePath: mediaPath })
     }
 
     function onCommandFailed(command, message) {
@@ -700,8 +723,10 @@ Panel {
                 // width depend on content that depends on the bubble: a binding
                 // loop, which collapses every bubble to a few pixels.
                 readonly property real maxInner: Math.max(Style.space(60), bubbleRow.width * 0.82 - bubbleRow.pad * 2)
-                readonly property bool hasImage: messageRow.modelData.imagePath
+                readonly property bool hasImage: !!messageRow.modelData.imagePath
                   && String(messageRow.modelData.imagePath).length > 0
+                readonly property bool hasAudio: !!messageRow.modelData.audioPath
+                  && String(messageRow.modelData.audioPath).length > 0
                 readonly property bool showBody: {
                   var text = messageRow.modelData.text || ""
                   if (!text.length) return false
@@ -731,6 +756,7 @@ Panel {
                     width: Math.max(
                       bubbleRow.showSender ? senderLabel.width : 0,
                       bubbleRow.hasImage ? photo.width : 0,
+                      bubbleRow.hasAudio ? audioControl.width : 0,
                       bodyLabel.visible ? bodyLabel.width : 0,
                       Math.min(metaLabel.implicitWidth, bubbleRow.maxInner))
 
@@ -781,6 +807,37 @@ Panel {
                             color: "#ffffff"
                           }
                         }
+                      }
+                    }
+
+                    Row {
+                      id: audioControl
+                      visible: bubbleRow.hasAudio
+                      spacing: Style.space(5)
+
+                      PanelActionButton {
+                        iconText: voicePlayer.playbackState === MediaPlayer.PlayingState
+                          && voicePlayer.source.toString() === Qt.resolvedUrl("file://" + messageRow.modelData.audioPath).toString()
+                          ? "\uf04c" : "\uf04b"
+                        tooltipText: "Play audio"
+                        foreground: root.foreground
+                        fontFamily: root.fontFamily
+                        onClicked: {
+                          var source = Qt.resolvedUrl("file://" + messageRow.modelData.audioPath)
+                          if (voicePlayer.playbackState === MediaPlayer.PlayingState && voicePlayer.source.toString() === source.toString()) voicePlayer.stop()
+                          else {
+                            voicePlayer.source = source
+                            voicePlayer.play()
+                          }
+                        }
+                      }
+
+                      Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Audio"
+                        color: root.foreground
+                        font.family: root.fontFamily
+                        font.pixelSize: Style.font.body
                       }
                     }
 
@@ -847,7 +904,7 @@ Panel {
             TextField {
               id: composer
               anchors.left: parent.left
-              anchors.right: sendButton.left
+              anchors.right: attachAudioButton.left
               anchors.rightMargin: Style.space(6)
               anchors.verticalCenter: parent.verticalCenter
               foreground: root.foreground
@@ -868,6 +925,19 @@ Panel {
             }
 
             PanelActionButton {
+              id: attachAudioButton
+              anchors.right: sendButton.left
+              anchors.rightMargin: Style.space(4)
+              anchors.verticalCenter: parent.verticalCenter
+              iconText: "\uf0c6"
+              tooltipText: "Attach audio"
+              enabled: root.linked
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              onClicked: audioPicker.open()
+            }
+
+            PanelActionButton {
               id: sendButton
               anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
@@ -878,6 +948,14 @@ Panel {
               fontFamily: root.fontFamily
               onClicked: root.sendReply()
             }
+          }
+
+          FileDialog {
+            id: audioPicker
+            title: "Send audio"
+            fileMode: FileDialog.OpenFile
+            nameFilters: ["Audio files (*.aac *.flac *.m4a *.mp3 *.oga *.ogg *.opus *.wav)"]
+            onAccepted: root.sendAudio(selectedFile)
           }
         }
       }
