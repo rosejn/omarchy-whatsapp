@@ -54,6 +54,12 @@ Panel {
   property real reactionMenuX: 0
   property real reactionMenuY: 0
 
+  Timer {
+    id: reactionDismissTimer
+    interval: 500
+    onTriggered: root.reactionTargetId = ""
+  }
+
   MediaPlayer {
     id: voicePlayer
     audioOutput: AudioOutput { volume: 1.0 }
@@ -933,21 +939,47 @@ Panel {
                   anchors.fill: parent
                   hoverEnabled: true
                   acceptedButtons: Qt.NoButton
+                  onContainsMouseChanged: {
+                    if (containsMouse) reactionDismissTimer.stop()
+                    else reactionDismissTimer.restart()
+                  }
                 }
 
-                PanelActionButton {
+                Rectangle {
                   id: reactionButton
                   visible: bubbleHover.containsMouse || root.reactionTargetId === messageRow.modelData.id
+                  width: Math.max(Style.space(22), Style.font.icon + Style.spacing.sm * 2)
+                  height: width
                   x: Math.min(bubble.x + bubble.width + Style.space(2), bubbleRow.width - width)
                   y: bubble.y + (bubble.height - height) / 2
-                  iconText: "\uf118"
-                  tooltipText: "Add reaction"
-                  foreground: root.secondaryForeground
-                  fontFamily: root.fontFamily
-                  onClicked: {
+                  radius: Style.cornerRadius
+                  color: reactionButtonMouse.containsMouse
+                    ? Style.hoverFillFor(root.secondaryForeground, root.secondaryForeground)
+                    : "transparent"
+
+                  Text {
+                    anchors.centerIn: parent
+                    text: "\uf118"
+                    color: reactionButtonMouse.containsMouse ? root.foreground : root.secondaryForeground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.icon
+                  }
+
+                  MouseArea {
+                    id: reactionButtonMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onContainsMouseChanged: {
+                      if (containsMouse) reactionDismissTimer.stop()
+                      else if (!bubbleHover.containsMouse && !reactionPaletteHover.containsMouse) reactionDismissTimer.restart()
+                    }
+                    onClicked: function (event) {
                     root.reactionTargetId = root.reactionTargetId === messageRow.modelData.id ? "" : messageRow.modelData.id
-                    root.reactionMenuX = reactionButton.x + reactionButton.width / 2
-                    root.reactionMenuY = reactionButton.y
+                    root.reactionMenuX = reactionButton.x + event.x
+                    root.reactionMenuY = reactionButton.y + event.y
+                    reactionDismissTimer.stop()
+                  }
                   }
                 }
 
@@ -957,6 +989,17 @@ Panel {
                   x: Math.max(0, Math.min(root.reactionMenuX - width / 2, bubbleRow.width - width))
                   y: root.reactionMenuY - height - Style.space(3)
                   spacing: Style.space(2)
+
+                  MouseArea {
+                    id: reactionPaletteHover
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    acceptedButtons: Qt.NoButton
+                    onContainsMouseChanged: {
+                      if (containsMouse) reactionDismissTimer.stop()
+                      else if (!bubbleHover.containsMouse) reactionDismissTimer.restart()
+                    }
+                  }
 
                   Repeater {
                     model: ["👍", "❤️", "😂", "😮", "😢", "🙏"]
