@@ -50,6 +50,7 @@ Panel {
   readonly property int chatLimit: root.setting("chatLimit", 40)
   readonly property int messageLimit: root.setting("messageLimit", 60)
   property bool sendRecordedAudio: false
+  property string reactionTargetId: ""
 
   MediaPlayer {
     id: voicePlayer
@@ -206,6 +207,12 @@ Panel {
     voiceRecorder.outputLocation = Qt.resolvedUrl("file://" + runtime + "/omarchy-whatsapp-" + Date.now() + ".m4a")
     root.statusLine = "Recording… click the microphone to send"
     voiceRecorder.record()
+  }
+
+  function sendReaction(messageId, emoji) {
+    if (!root.client || !root.client.ready || !root.activeJid) return
+    if (!root.client.react(root.activeJid, messageId, emoji)) root.statusLine = "Could not send reaction"
+    root.reactionTargetId = ""
   }
 
   function openWebClient() {
@@ -914,6 +921,36 @@ Panel {
                         : root.secondaryForeground
                       font.family: root.fontFamily
                       font.pixelSize: Style.font.caption
+                    }
+                  }
+
+                  MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.RightButton
+                    onClicked: function (event) {
+                      root.reactionTargetId = root.reactionTargetId === messageRow.modelData.id ? "" : messageRow.modelData.id
+                      event.accepted = true
+                    }
+                  }
+                }
+
+                Row {
+                  visible: root.reactionTargetId === messageRow.modelData.id
+                  z: 10
+                  anchors.bottom: bubble.top
+                  anchors.right: messageRow.modelData.fromMe ? bubble.right : undefined
+                  anchors.left: messageRow.modelData.fromMe ? undefined : bubble.left
+                  spacing: Style.space(2)
+
+                  Repeater {
+                    model: ["👍", "❤️", "😂", "😮", "😢", "🙏"]
+                    delegate: PanelActionButton {
+                      required property string modelData
+                      iconText: modelData
+                      tooltipText: "React " + modelData
+                      foreground: root.foreground
+                      fontFamily: root.fontFamily
+                      onClicked: root.sendReaction(messageRow.modelData.id, modelData)
                     }
                   }
                 }

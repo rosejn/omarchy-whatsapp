@@ -1250,6 +1250,20 @@ async function handleCommand(payload, reply) {
       return
     }
 
+    case 'react': {
+      const rawJid = payload.jid
+      const messageId = String(payload.id || '')
+      const emoji = String(payload.emoji || '')
+      if (!rawJid || !messageId || !emoji) throw new Error('react: chat, message, and emoji are required')
+      if (!sock || connection !== 'open') throw new Error('react: not connected to WhatsApp')
+      const canonical = store.canonicalJid(rawJid) || rawJid
+      const target = store.findMessage(canonical, messageId)
+      if (!target?.key?.id) throw new Error('react: message is no longer available locally')
+      await sock.sendMessage(rawJid, { react: { text: emoji, key: target.key } })
+      reply({ t: 'ack', id, ok: true, jid: rawJid })
+      return
+    }
+
     case 'read':
       if (!payload.jid) throw new Error('read: jid required')
       await markRead(payload.jid)

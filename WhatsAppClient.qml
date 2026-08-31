@@ -134,6 +134,11 @@ Item {
     return request({ t: "sendAudio", jid: jid, path: path })
   }
 
+  function react(jid, messageId, emoji) {
+    if (!jid || !messageId || !emoji) return false
+    return request({ t: "react", jid: jid, id: messageId, emoji: emoji })
+  }
+
   property bool setupTried: false
 
   function startDaemon() {
