@@ -50,7 +50,6 @@ Panel {
   readonly property int chatLimit: root.setting("chatLimit", 40)
   readonly property int messageLimit: root.setting("messageLimit", 60)
   property bool sendRecordedAudio: false
-  property bool attachingAudio: false
 
   MediaPlayer {
     id: voicePlayer
@@ -168,12 +167,6 @@ Panel {
   function sendReply() {
     var text = composer.text
     if (!text || !text.trim().length) return
-    if (root.attachingAudio) {
-      root.attachingAudio = false
-      root.sendAudio(Qt.resolvedUrl("file://" + text.trim()))
-      composer.text = ""
-      return
-    }
     if (!root.client || !root.client.ready) {
       root.statusLine = "Not connected to WhatsApp"
       return
@@ -947,15 +940,11 @@ Panel {
               anchors.left: parent.left
               anchors.verticalCenter: parent.verticalCenter
               iconText: "\uf0c6"
-              tooltipText: "Attach audio by path"
+              tooltipText: "Attach file"
               enabled: root.linked
               foreground: root.foreground
               fontFamily: root.fontFamily
-              onClicked: {
-                root.attachingAudio = true
-                composer.text = ""
-                composer.forceActiveFocus()
-              }
+              onClicked: if (!filePicker.running) filePicker.running = true
             }
 
             TextField {
@@ -967,7 +956,7 @@ Panel {
               anchors.verticalCenter: parent.verticalCenter
               foreground: root.foreground
               accent: root.bar ? root.bar.urgent : Color.accent
-              placeholderText: root.attachingAudio ? "Paste an absolute audio-file path, then press Enter" : (root.linked ? "Reply\u2026" : "Not connected")
+              placeholderText: root.linked ? "Reply\u2026" : "Not connected"
               enabled: root.linked
               onAccepted: root.sendReply()
               onTextChanged: {
@@ -992,6 +981,16 @@ Panel {
               foreground: root.foreground
               fontFamily: root.fontFamily
               onClicked: root.toggleRecording()
+            }
+          }
+
+          Process {
+            id: filePicker
+            command: [root.pluginDir + "/bin/omarchy-whatsapp-pick-file"]
+            stdout: StdioCollector { id: filePickerOutput; waitForEnd: true }
+            onExited: function(exitCode) {
+              var path = String(filePickerOutput.text || "").trim()
+              if (exitCode === 0 && path.length > 0) root.sendAudio(Qt.resolvedUrl("file://" + path))
             }
           }
 
