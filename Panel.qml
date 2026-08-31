@@ -51,6 +51,8 @@ Panel {
   readonly property int messageLimit: root.setting("messageLimit", 60)
   property bool sendRecordedAudio: false
   property string reactionTargetId: ""
+  property real reactionMenuX: 0
+  property real reactionMenuY: 0
 
   MediaPlayer {
     id: voicePlayer
@@ -942,15 +944,18 @@ Panel {
                   tooltipText: "Add reaction"
                   foreground: root.secondaryForeground
                   fontFamily: root.fontFamily
-                  onClicked: root.reactionTargetId = root.reactionTargetId === messageRow.modelData.id ? "" : messageRow.modelData.id
+                  onClicked: {
+                    root.reactionTargetId = root.reactionTargetId === messageRow.modelData.id ? "" : messageRow.modelData.id
+                    root.reactionMenuX = reactionButton.x + reactionButton.width / 2
+                    root.reactionMenuY = reactionButton.y
+                  }
                 }
 
                 Row {
                   visible: root.reactionTargetId === messageRow.modelData.id
                   z: 10
-                  anchors.bottom: bubble.top
-                  anchors.right: messageRow.modelData.fromMe ? bubble.right : undefined
-                  anchors.left: messageRow.modelData.fromMe ? undefined : bubble.left
+                  x: Math.max(0, Math.min(root.reactionMenuX - width / 2, bubbleRow.width - width))
+                  y: Math.max(0, root.reactionMenuY - height - Style.space(3))
                   spacing: Style.space(2)
 
                   Repeater {
