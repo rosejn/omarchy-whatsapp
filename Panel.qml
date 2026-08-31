@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Dialogs
 import QtMultimedia
 import Quickshell
 import Quickshell.Wayland
@@ -51,6 +50,7 @@ Panel {
   readonly property int chatLimit: root.setting("chatLimit", 40)
   readonly property int messageLimit: root.setting("messageLimit", 60)
   property bool sendRecordedAudio: false
+  property bool attachingAudio: false
 
   MediaPlayer {
     id: voicePlayer
@@ -168,6 +168,12 @@ Panel {
   function sendReply() {
     var text = composer.text
     if (!text || !text.trim().length) return
+    if (root.attachingAudio) {
+      root.attachingAudio = false
+      root.sendAudio(Qt.resolvedUrl("file://" + text.trim()))
+      composer.text = ""
+      return
+    }
     if (!root.client || !root.client.ready) {
       root.statusLine = "Not connected to WhatsApp"
       return
@@ -941,11 +947,15 @@ Panel {
               anchors.left: parent.left
               anchors.verticalCenter: parent.verticalCenter
               iconText: "\uf0c6"
-              tooltipText: "Attach audio"
+              tooltipText: "Attach audio by path"
               enabled: root.linked
               foreground: root.foreground
               fontFamily: root.fontFamily
-              onClicked: audioPicker.open()
+              onClicked: {
+                root.attachingAudio = true
+                composer.text = ""
+                composer.forceActiveFocus()
+              }
             }
 
             TextField {
@@ -957,7 +967,7 @@ Panel {
               anchors.verticalCenter: parent.verticalCenter
               foreground: root.foreground
               accent: root.bar ? root.bar.urgent : Color.accent
-              placeholderText: root.linked ? "Reply\u2026" : "Not connected"
+              placeholderText: root.attachingAudio ? "Paste an absolute audio-file path, then press Enter" : (root.linked ? "Reply\u2026" : "Not connected")
               enabled: root.linked
               onAccepted: root.sendReply()
               onTextChanged: {
@@ -985,13 +995,6 @@ Panel {
             }
           }
 
-          FileDialog {
-            id: audioPicker
-            title: "Send audio"
-            fileMode: FileDialog.OpenFile
-            nameFilters: ["Audio files (*.aac *.flac *.m4a *.mp3 *.oga *.ogg *.opus *.wav)"]
-            onAccepted: root.sendAudio(selectedFile)
-          }
         }
       }
 
