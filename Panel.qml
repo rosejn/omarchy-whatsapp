@@ -402,7 +402,9 @@ Panel {
     owner: root.hostWidget || root
     bar: root.bar
     open: root.opened
-    focusTarget: keyCatcher
+    // KeyboardPanel gives this target focus after it has finished opening.
+    // A conversation should be ready to type into immediately.
+    focusTarget: root.view === "chat" ? composer : keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(400))
     contentHeight: panel.fittedContentHeight(content.implicitHeight)
 
@@ -934,20 +936,18 @@ Panel {
 
                 }
 
-                MouseArea {
+                HoverHandler {
                   id: bubbleHover
-                  anchors.fill: parent
-                  hoverEnabled: true
-                  acceptedButtons: Qt.NoButton
-                  onContainsMouseChanged: {
-                    if (containsMouse) reactionDismissTimer.stop()
+                  onHoveredChanged: {
+                    if (hovered) reactionDismissTimer.stop()
                     else reactionDismissTimer.restart()
                   }
                 }
 
                 Rectangle {
                   id: reactionButton
-                  visible: bubbleHover.containsMouse || root.reactionTargetId === messageRow.modelData.id
+                  visible: bubbleHover.hovered || reactionButtonMouse.containsMouse
+                    || root.reactionTargetId === messageRow.modelData.id
                   width: Math.max(Style.space(22), Style.font.icon + Style.spacing.sm * 2)
                   height: width
                   x: Math.min(bubble.x + bubble.width + Style.space(2), bubbleRow.width - width)
@@ -972,23 +972,23 @@ Panel {
                     cursorShape: Qt.PointingHandCursor
                     onContainsMouseChanged: {
                       if (containsMouse) reactionDismissTimer.stop()
-                      else if (!bubbleHover.containsMouse && !reactionPaletteHover.containsMouse) reactionDismissTimer.restart()
+                      else if (!bubbleHover.hovered && !reactionPaletteHover.containsMouse) reactionDismissTimer.restart()
                     }
-                    onClicked: function (event) {
-                    root.reactionTargetId = root.reactionTargetId === messageRow.modelData.id ? "" : messageRow.modelData.id
-                    root.reactionMenuX = reactionButton.x + event.x
-                    root.reactionMenuY = reactionButton.y + event.y
-                    reactionDismissTimer.stop()
-                  }
+                    onClicked: {
+                      root.reactionTargetId = root.reactionTargetId === messageRow.modelData.id ? "" : messageRow.modelData.id
+                      reactionDismissTimer.stop()
+                    }
                   }
                 }
 
-                Row {
+                Item {
+                  id: reactionPalette
                   visible: root.reactionTargetId === messageRow.modelData.id
                   z: 10
-                  x: Math.max(0, Math.min(root.reactionMenuX - width / 2, bubbleRow.width - width))
-                  y: root.reactionMenuY - height - Style.space(3)
-                  spacing: Style.space(2)
+                  width: reactionEmojiRow.implicitWidth
+                  height: reactionEmojiRow.implicitHeight
+                  x: Math.max(0, Math.min(reactionButton.x + reactionButton.width / 2 - width / 2, bubbleRow.width - width))
+                  y: reactionButton.y - height - Style.space(3)
 
                   MouseArea {
                     id: reactionPaletteHover
@@ -997,19 +997,24 @@ Panel {
                     acceptedButtons: Qt.NoButton
                     onContainsMouseChanged: {
                       if (containsMouse) reactionDismissTimer.stop()
-                      else if (!bubbleHover.containsMouse) reactionDismissTimer.restart()
+                      else if (!bubbleHover.hovered && !reactionButtonMouse.containsMouse) reactionDismissTimer.restart()
                     }
                   }
 
-                  Repeater {
-                    model: ["👍", "❤️", "😂", "😮", "😢", "🙏"]
-                    delegate: PanelActionButton {
-                      required property string modelData
-                      iconText: modelData
-                      tooltipText: "React " + modelData
-                      foreground: root.foreground
-                      fontFamily: root.fontFamily
-                      onClicked: root.sendReaction(messageRow.modelData.id, modelData)
+                  Row {
+                    id: reactionEmojiRow
+                    spacing: Style.space(2)
+
+                    Repeater {
+                      model: ["👍", "❤️", "😂", "😮", "😢", "🙏"]
+                      delegate: PanelActionButton {
+                        required property string modelData
+                        iconText: modelData
+                        tooltipText: "React " + modelData
+                        foreground: root.foreground
+                        fontFamily: root.fontFamily
+                        onClicked: root.sendReaction(messageRow.modelData.id, modelData)
+                      }
                     }
                   }
                 }
