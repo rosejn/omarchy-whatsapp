@@ -50,10 +50,32 @@ Panel {
   readonly property color secondaryForeground: Qt.darker(root.foreground, 1.5)
   readonly property int chatLimit: root.setting("chatLimit", 40)
   readonly property int messageLimit: root.setting("messageLimit", 60)
+  property bool sendRecordedAudio: false
 
   MediaPlayer {
     id: voicePlayer
     audioOutput: AudioOutput { volume: 1.0 }
+  }
+
+  CaptureSession {
+    audioInput: AudioInput { }
+    recorder: voiceRecorder
+  }
+
+  MediaRecorder {
+    id: voiceRecorder
+    mediaFormat.fileFormat: MediaFormat.MPEG4
+    mediaFormat.audioCodec: MediaFormat.AudioCodec.AAC
+    audioBitRate: 64000
+    onRecorderStateChanged: {
+      if (recorderState !== MediaRecorder.StoppedState || !root.sendRecordedAudio) return
+      root.sendRecordedAudio = false
+      if (actualLocation && String(actualLocation).length > 0) root.sendAudio(actualLocation)
+    }
+    onErrorOccurred: function (error, errorString) {
+      root.sendRecordedAudio = false
+      root.statusLine = errorString || "Microphone recording failed"
+    }
   }
 
   function open() { root.controller.show() }
@@ -172,6 +194,19 @@ Panel {
     }
     root.statusLine = "Sending audio…"
     if (!root.client.sendAudio(root.activeJid, path)) root.statusLine = "Could not send audio"
+  }
+
+  function toggleRecording() {
+    if (voiceRecorder.recorderState === MediaRecorder.RecordingState) {
+      root.statusLine = "Sending voice note…"
+      root.sendRecordedAudio = true
+      voiceRecorder.stop()
+      return
+    }
+    var runtime = Quickshell.env("XDG_RUNTIME_DIR") || "/tmp"
+    voiceRecorder.outputLocation = Qt.resolvedUrl("file://" + runtime + "/omarchy-whatsapp-" + Date.now() + ".m4a")
+    root.statusLine = "Recording… click the microphone to send"
+    voiceRecorder.record()
   }
 
   function openWebClient() {
@@ -899,12 +934,25 @@ Panel {
           // ── Inline reply ───────────────────────────────────────────────
           Item {
             width: parent.width
-            implicitHeight: Math.max(composer.implicitHeight, sendButton.implicitHeight)
+            implicitHeight: Math.max(composer.implicitHeight, attachButton.implicitHeight, microphoneButton.implicitHeight)
+
+            PanelActionButton {
+              id: attachButton
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+              iconText: "\uf0c6"
+              tooltipText: "Attach audio"
+              enabled: root.linked
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              onClicked: audioPicker.open()
+            }
 
             TextField {
               id: composer
-              anchors.left: parent.left
-              anchors.right: attachAudioButton.left
+              anchors.left: attachButton.right
+              anchors.leftMargin: Style.space(6)
+              anchors.right: microphoneButton.left
               anchors.rightMargin: Style.space(6)
               anchors.verticalCenter: parent.verticalCenter
               foreground: root.foreground
@@ -925,28 +973,15 @@ Panel {
             }
 
             PanelActionButton {
-              id: attachAudioButton
-              anchors.right: sendButton.left
-              anchors.rightMargin: Style.space(4)
+              id: microphoneButton
+              anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
-              iconText: "\uf0c6"
-              tooltipText: "Attach audio"
+              iconText: voiceRecorder.recorderState === MediaRecorder.RecordingState ? "\uf04d" : "\uf130"
+              tooltipText: voiceRecorder.recorderState === MediaRecorder.RecordingState ? "Stop and send voice note" : "Record voice note"
               enabled: root.linked
               foreground: root.foreground
               fontFamily: root.fontFamily
-              onClicked: audioPicker.open()
-            }
-
-            PanelActionButton {
-              id: sendButton
-              anchors.right: parent.right
-              anchors.verticalCenter: parent.verticalCenter
-              iconText: "\uf1d8"
-              tooltipText: "Send"
-              enabled: root.linked && composer.text.trim().length > 0
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              onClicked: root.sendReply()
+              onClicked: root.toggleRecording()
             }
           }
 
