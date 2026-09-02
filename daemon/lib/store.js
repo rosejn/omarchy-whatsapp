@@ -58,6 +58,16 @@ export class Store {
     return key
   }
 
+  // WhatsApp may require a mapped one-to-one contact to be addressed by its
+  // LID even when the UI and our durable store use the phone-number JID as the
+  // canonical identity. Groups and already-LID destinations keep their input.
+  sendJid(jid) {
+    const key = normalizeJid(jid)
+    if (!key || key.endsWith('@g.us') || key.endsWith('@broadcast') || key.endsWith('@lid')) return key
+    const alternate = normalizeJid(this.aliases.get(key) || '')
+    return alternate.endsWith('@lid') ? alternate : key
+  }
+
   load() {
     let raw
     try {

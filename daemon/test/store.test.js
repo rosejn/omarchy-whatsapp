@@ -51,3 +51,12 @@ test('alias merge prefers Always mute over a shorter primary timed mute', () => 
   assert.equal(canonical.muteEndTime, -1)
   assert.equal(canonical.muted, true)
 })
+
+test('routes mapped one-to-one sends through the LID', () => {
+  const store = new Store()
+  store.alias('123@lid', '555@s.whatsapp.net')
+
+  assert.equal(store.sendJid('555@s.whatsapp.net'), '123@lid')
+  assert.equal(store.sendJid('123@lid'), '123@lid')
+  assert.equal(store.sendJid('120@g.us'), '120@g.us')
+})

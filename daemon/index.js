@@ -1184,6 +1184,7 @@ async function handleCommand(payload, reply) {
       if (!sock || connection !== 'open') throw new Error('send: not connected to WhatsApp')
 
       const canonical = store.canonicalJid(rawJid) || rawJid
+      const sendJid = store.sendJid(rawJid) || canonical
       const options = {}
       if (payload.quoted) {
         const list = store.messages.get(canonical) || []
@@ -1191,7 +1192,7 @@ async function handleCommand(payload, reply) {
         if (quoted?.key) options.quoted = { key: quoted.key, message: { conversation: quoted.text } }
       }
 
-      const sent = await sock.sendMessage(rawJid, { text }, options)
+      const sent = await sock.sendMessage(sendJid, { text }, options)
       if (sent) {
         // generateWAMessage stamps PENDING. relayMessage has already succeeded
         // here, so the server has the stanza — show a single tick immediately.
@@ -1203,7 +1204,7 @@ async function handleCommand(payload, reply) {
             message.status = MSG_SERVER_ACK
             store.upsertMessage(canonicalTarget, message)
           }
-          bus.broadcast({ t: 'message', jid: rawJid, message: publicMessage(message), chat: store.chat(canonicalTarget), unread: store.totalUnread() })
+          bus.broadcast({ t: 'message', jid: canonicalTarget, message: publicMessage(message), chat: store.chat(canonicalTarget), unread: store.totalUnread() })
           applyMessageStatus(canonicalTarget, message.id, MSG_SERVER_ACK)
           pushChats()
         }
@@ -1229,7 +1230,8 @@ async function handleCommand(payload, reply) {
         oga: 'audio/ogg', ogg: 'audio/ogg', opus: 'audio/ogg; codecs=opus', wav: 'audio/wav'
       }
       const canonical = store.canonicalJid(rawJid) || rawJid
-      const sent = await sock.sendMessage(rawJid, {
+      const sendJid = store.sendJid(rawJid) || canonical
+      const sent = await sock.sendMessage(sendJid, {
         audio: { url: path },
         mimetype: mimetypes[extension] || 'audio/ogg',
         ptt: false
@@ -1259,7 +1261,8 @@ async function handleCommand(payload, reply) {
       const canonical = store.canonicalJid(rawJid) || rawJid
       const target = store.findMessage(canonical, messageId)
       if (!target?.key?.id) throw new Error('react: message is no longer available locally')
-      await sock.sendMessage(rawJid, { react: { text: emoji, key: target.key } })
+      const sendJid = store.sendJid(rawJid) || canonical
+      await sock.sendMessage(sendJid, { react: { text: emoji, key: target.key } })
       reply({ t: 'ack', id, ok: true, jid: rawJid })
       return
     }
