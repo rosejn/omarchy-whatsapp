@@ -18,7 +18,7 @@ import { logger, waLogger } from './lib/logger.js'
 import { Store, normalizeJid } from './lib/store.js'
 import { Notifier } from './lib/notify.js'
 import { Bus } from './lib/server.js'
-import { extractMedia, isGroupJid, isIgnorableChat, isPhotoPlaceholder, isSilent, messageText, messageType, prettyJid } from './lib/message.js'
+import { extractMedia, isGroupJid, isIgnorableChat, isPhotoPlaceholder, isSilent, messageText, messageType, prettyJid, reactionDetails } from './lib/message.js'
 import { existingMediaPath, MediaCache } from './lib/media.js'
 import {
   applyChatNotificationPreferences,
@@ -378,6 +378,28 @@ function ingest(chatJid, raw) {
     media.enqueue(canonicalTarget, message)
   }
   return { message, canonicalTarget, existed }
+}
+
+function ingestReaction(chatJid, raw) {
+  const details = reactionDetails(raw?.message)
+  if (!details || isIgnorableChat(chatJid)) return null
+
+  learnAliasesFromMessage(raw)
+  const canonicalTarget = store.canonicalJid(chatJid) || normalizeJid(chatJid) || chatJid
+  const sender = raw.key?.fromMe
+    ? store.me?.id
+    : raw.key?.participant || raw.participant || raw.key?.remoteJid
+  if (!sender) return null
+
+  const target = store.applyReaction(canonicalTarget, details.id, {
+    emoji: details.text,
+    senderJid: jidNormalizedUser(sender),
+    senderName: senderNameFor(canonicalTarget, raw),
+    fromMe: raw.key?.fromMe === true
+  })
+  if (!target) return null
+  const targetChat = store.canonicalJid(target.key?.remoteJid) || canonicalTarget
+  return { target, canonicalTarget: targetChat }
 }
 
 function applyChatMetadata(rawChats) {
@@ -929,9 +951,20 @@ async function connect() {
       if (sock !== thisSocket) return
       const before = store.totalUnread()
       let ingested = false
+      let reactionChanged = false
       for (const raw of messages || []) {
         const jid = raw?.key?.remoteJid
         if (!jid) continue
+        const reaction = ingestReaction(jid, raw)
+        if (reaction) {
+          reactionChanged = true
+          bus.broadcast({
+            t: 'messageReaction',
+            jid: reaction.canonicalTarget,
+            message: publicMessage(reaction.target)
+          })
+          continue
+        }
         const result = ingest(jid, raw)
         if (!result) continue
         ingested = true
@@ -969,6 +1002,7 @@ async function connect() {
       }
       const unreadChanged = store.totalUnread() !== before
       if (ingested) pushChatsSoon()
+      if (reactionChanged) pushChatsSoon()
       if (unreadChanged) pushState()
     })
 
@@ -1263,6 +1297,13 @@ async function handleCommand(payload, reply) {
       if (!target?.key?.id) throw new Error('react: message is no longer available locally')
       const sendJid = store.sendJid(rawJid) || canonical
       await sock.sendMessage(sendJid, { react: { text: emoji, key: target.key } })
+      const updated = store.applyReaction(canonical, messageId, {
+        emoji,
+        senderJid: store.me?.id || 'self@s.whatsapp.net',
+        senderName: store.me?.name || 'You',
+        fromMe: true
+      })
+      if (updated) bus.broadcast({ t: 'messageReaction', jid: canonical, message: publicMessage(updated) })
       reply({ t: 'ack', id, ok: true, jid: rawJid })
       return
     }

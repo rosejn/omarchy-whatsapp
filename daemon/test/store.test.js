@@ -60,3 +60,27 @@ test('routes mapped one-to-one sends through the LID', () => {
   assert.equal(store.sendJid('123@lid'), '123@lid')
   assert.equal(store.sendJid('120@g.us'), '120@g.us')
 })
+
+test('attaches, replaces, and removes message reactions by sender', () => {
+  const store = new Store()
+  store.upsertMessage('555@s.whatsapp.net', {
+    id: 'message-1',
+    key: { remoteJid: '555@s.whatsapp.net', id: 'message-1' },
+    text: 'hello'
+  })
+
+  store.applyReaction('555@s.whatsapp.net', 'message-1', {
+    emoji: '👍', senderJid: '111@s.whatsapp.net', fromMe: false
+  })
+  store.applyReaction('555@s.whatsapp.net', 'message-1', {
+    emoji: '❤️', senderJid: '111@s.whatsapp.net', fromMe: false
+  })
+  assert.deepEqual(store.findMessage('555@s.whatsapp.net', 'message-1').reactions, [{
+    emoji: '❤️', senderJid: '111@s.whatsapp.net', senderName: '', fromMe: false
+  }])
+
+  store.applyReaction('555@s.whatsapp.net', 'message-1', {
+    emoji: '', senderJid: '111@s.whatsapp.net', fromMe: false
+  })
+  assert.deepEqual(store.findMessage('555@s.whatsapp.net', 'message-1').reactions, [])
+})

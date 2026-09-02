@@ -329,6 +329,11 @@ Panel {
       if (root.opened && root.client && root.client.ready) root.client.markRead(jid)
     }
 
+    function onMessageReaction(jid, message) {
+      if (jid !== root.activeJid || !message) return
+      root.patchMessage(message.id, { reactions: message.reactions || [] })
+    }
+
     function onMessageStatusChanged(jid, messageId, status) {
       // Receipt JIDs are often a LID or device-suffixed form that does not
       // equal activeJid. Apply by message id in the open thread.
@@ -808,6 +813,7 @@ Panel {
                       bubbleRow.showSender ? senderLabel.width : 0,
                       bubbleRow.hasImage ? photo.width : 0,
                       bubbleRow.hasAudio ? audioControl.width : 0,
+                      reactionsRow.visible ? reactionsRow.implicitWidth : 0,
                       bodyLabel.visible ? bodyLabel.width : 0,
                       Math.min(metaLabel.implicitWidth, bubbleRow.maxInner))
 
@@ -931,6 +937,34 @@ Panel {
                         : root.secondaryForeground
                       font.family: root.fontFamily
                       font.pixelSize: Style.font.caption
+                    }
+
+                    Row {
+                      id: reactionsRow
+                      visible: (messageRow.modelData.reactions || []).length > 0
+                      spacing: Style.space(3)
+
+                      Repeater {
+                        model: Model.reactionGroups(messageRow.modelData.reactions || [])
+                        delegate: Rectangle {
+                          required property var modelData
+                          width: reactionLabel.implicitWidth + Style.space(10)
+                          height: Style.space(22)
+                          radius: height / 2
+                          color: Style.normalFillFor(root.foreground, Color.accent)
+                          border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.28)
+                          border.width: 1
+
+                          Text {
+                            id: reactionLabel
+                            anchors.centerIn: parent
+                            text: modelData.emoji + (modelData.count > 1 ? " " + modelData.count : "")
+                            color: root.foreground
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                          }
+                        }
+                      }
                     }
                   }
 

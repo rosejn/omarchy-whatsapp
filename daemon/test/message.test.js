@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { extractMedia } from '../lib/message.js'
+import { extractMedia, reactionDetails } from '../lib/message.js'
 
 test('retains the encrypted payload required to download a voice note', () => {
   const media = extractMedia({
@@ -27,4 +27,11 @@ test('retains the encrypted payload required to download a voice note', () => {
     seconds: 3,
     caption: ''
   })
+})
+
+test('extracts the target and emoji from a reaction protocol message', () => {
+  assert.deepEqual(reactionDetails({ reactionMessage: {
+    key: { remoteJid: '555@s.whatsapp.net', id: 'target-1' },
+    text: '👍'
+  } }), { id: 'target-1', text: '👍' })
 })
