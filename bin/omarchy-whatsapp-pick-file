@@ -12,12 +12,6 @@ dialog = Gtk.FileChooserDialog(
 dialog.set_modal(True)
 dialog.set_select_multiple(False)
 
-audio_files = Gtk.FileFilter()
-audio_files.set_name("Audio files")
-for pattern in ("*.aac", "*.flac", "*.m4a", "*.mp3", "*.oga", "*.ogg", "*.opus", "*.wav"):
-    audio_files.add_pattern(pattern)
-dialog.add_filter(audio_files)
-
 response = dialog.run()
 if response == Gtk.ResponseType.ACCEPT:
     print(dialog.get_filename())

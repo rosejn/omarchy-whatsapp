@@ -60,6 +60,7 @@ Item {
   signal messageMedia(string jid, string messageId, string mediaPath, string mediaKind)
   signal focusRequested(string jid)
   signal commandFailed(string command, string message)
+  signal mediaSendCompleted(string jid)
   signal pairCodeReceived(string code)
   signal sendAcknowledged(string jid)
 
@@ -130,9 +131,14 @@ Item {
     return request(payload)
   }
 
-  function sendAudio(jid, path) {
+  function sendVoiceNote(jid, path) {
     if (!jid || !path || !path.length) return false
-    return request({ t: "sendAudio", jid: jid, path: path })
+    return request({ t: "sendVoiceNote", jid: jid, path: path })
+  }
+
+  function sendFile(jid, path) {
+    if (!jid || !path || !path.length) return false
+    return request({ t: "sendFile", jid: jid, path: path })
   }
 
   function react(jid, messageId, emoji) {
@@ -243,6 +249,10 @@ Item {
 
       case "messageReaction":
         root.messageReaction(frame.jid || "", frame.message || null)
+        break
+
+      case "sent":
+        if (frame.jid) root.mediaSendCompleted(frame.jid)
         break
 
       case "messageMedia":

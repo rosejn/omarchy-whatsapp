@@ -72,13 +72,13 @@ Panel {
 
   MediaRecorder {
     id: voiceRecorder
-    mediaFormat.fileFormat: MediaFormat.MPEG4
-    mediaFormat.audioCodec: MediaFormat.AudioCodec.AAC
+    mediaFormat.fileFormat: MediaFormat.Ogg
+    mediaFormat.audioCodec: MediaFormat.Opus
     audioBitRate: 64000
     onRecorderStateChanged: {
       if (recorderState !== MediaRecorder.StoppedState || !root.sendRecordedAudio) return
       root.sendRecordedAudio = false
-      if (actualLocation && String(actualLocation).length > 0) root.sendAudio(actualLocation)
+      if (actualLocation && String(actualLocation).length > 0) root.sendVoiceNote(actualLocation)
     }
     onErrorOccurred: function (error, errorString) {
       root.sendRecordedAudio = false
@@ -194,14 +194,24 @@ Panel {
     return decodeURIComponent(text.substring(7))
   }
 
-  function sendAudio(url) {
+  function sendVoiceNote(url) {
     var path = root.localPath(url)
     if (!path || !root.client || !root.client.ready || !root.activeJid) {
-      root.statusLine = "Cannot send audio while disconnected"
+      root.statusLine = "Cannot send voice note while disconnected"
       return
     }
-    root.statusLine = "Sending audio…"
-    if (!root.client.sendAudio(root.activeJid, path)) root.statusLine = "Could not send audio"
+    root.statusLine = "Sending voice note…"
+    if (!root.client.sendVoiceNote(root.activeJid, path)) root.statusLine = "Could not send voice note"
+  }
+
+  function sendFile(path) {
+    var local = root.localPath(path) || String(path || "")
+    if (!local.startsWith("/") || !root.client || !root.client.ready || !root.activeJid) {
+      root.statusLine = "Cannot attach file while disconnected"
+      return
+    }
+    root.statusLine = "Sending file…"
+    if (!root.client.sendFile(root.activeJid, local)) root.statusLine = "Could not attach file"
   }
 
   function toggleRecording() {
@@ -212,8 +222,8 @@ Panel {
       return
     }
     var runtime = Quickshell.env("XDG_RUNTIME_DIR") || "/tmp"
-    voiceRecorder.outputLocation = Qt.resolvedUrl("file://" + runtime + "/omarchy-whatsapp-" + Date.now() + ".m4a")
-    root.statusLine = "Recording… click the microphone to send"
+    voiceRecorder.outputLocation = Qt.resolvedUrl("file://" + runtime + "/omarchy-whatsapp-" + Date.now() + ".ogg")
+    root.statusLine = "Recording… click the stop button to send"
     voiceRecorder.record()
   }
 
@@ -334,6 +344,11 @@ Panel {
       root.patchMessage(message.id, { reactions: message.reactions || [] })
     }
 
+    function onMediaSendCompleted(jid) {
+      if (jid === root.activeJid && (root.statusLine === "Sending file…" || root.statusLine === "Sending voice note…"))
+        root.statusLine = ""
+    }
+
     function onMessageStatusChanged(jid, messageId, status) {
       // Receipt JIDs are often a LID or device-suffixed form that does not
       // equal activeJid. Apply by message id in the open thread.
@@ -347,6 +362,7 @@ Panel {
 
     function onCommandFailed(command, message) {
       if (command === "send") root.statusLine = message
+      if (command === "sendFile" || command === "sendVoiceNote") root.statusLine = message
       if (command === "refresh") {
         root.refreshing = false
         refreshWatchdog.stop()
@@ -1125,7 +1141,7 @@ Panel {
             stdout: StdioCollector { id: filePickerOutput; waitForEnd: true }
             onExited: function(exitCode) {
               var path = String(filePickerOutput.text || "").trim()
-              if (exitCode === 0 && path.length > 0) root.sendAudio(Qt.resolvedUrl("file://" + path))
+              if (exitCode === 0 && path.length > 0) root.sendFile(path)
             }
           }
 
