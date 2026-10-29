@@ -13,7 +13,7 @@ pair_phone=""
 while (($# > 0)); do
   case $1 in
   --pair)
-    [[ -n ${2:-} ]] || wa_die "--pair needs a phone number in international format, e.g. --pair 919812345678"
+    [[ -n ${2:-} ]] || wa_die "--pair needs a phone number in international format, e.g. --pair YOUR_PHONE_NUMBER"
     pair_phone="$2"
     shift 2
     ;;

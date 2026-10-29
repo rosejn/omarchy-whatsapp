@@ -55,7 +55,7 @@ Click the WhatsApp icon in the bar and scan the QR code, or:
 
 ```sh
 omarchy-whatsapp login                 # QR in the terminal
-omarchy-whatsapp login --pair 919812345678   # 8-digit code instead
+omarchy-whatsapp login --pair YOUR_PHONE_NUMBER   # 8-digit code instead
 ```
 
 On your phone: **Settings → Linked devices → Link a device**.
@@ -115,10 +115,10 @@ mutes muted before this fix are rewritten from WhatsApp app-state.
 
 ```sh
 omarchy-whatsapp status                          # connection, account, unread
-omarchy-whatsapp send 919812345678@s.whatsapp.net "on my way"
+omarchy-whatsapp send YOUR_PHONE_NUMBER@s.whatsapp.net "on my way"
 omarchy-whatsapp chats 10                        # recent chats as JSON
 omarchy-whatsapp refresh                         # resync the chat list from WhatsApp
-omarchy-whatsapp focus 919812345678@s.whatsapp.net   # open the panel on a chat
+omarchy-whatsapp focus YOUR_PHONE_NUMBER@s.whatsapp.net   # open the panel on a chat
 omarchy-whatsapp open                            # full web client
 omarchy-whatsapp restart | logs | logout
 omarchy-whatsapp uninstall                       # service, CLI, credentials
