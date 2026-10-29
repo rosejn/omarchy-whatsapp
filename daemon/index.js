@@ -82,6 +82,7 @@ let qrCount = 0
 let pairingStopped = true
 let pairingWanted = false
 let creds = null
+let authKeys = null
 let needsLogin = false
 let lastError = ''
 let reconnectAttempts = 0
@@ -266,11 +267,38 @@ async function pullLatestFromWhatsApp() {
   if (!sock || connection !== 'open') return false
   if (typeof sock.resyncAppState === 'function') {
     await sock.resyncAppState(APP_STATE_COLLECTIONS, false)
+    await checkPreferenceSync()
   }
   if (typeof sock.cleanDirtyBits === 'function') {
     await sock.cleanDirtyBits('account_sync')
   }
   return true
+}
+
+// Mute and archive preferences travel in the `regular_high` app-state
+// collection. Baileys logs a failed collection sync at info level (which the
+// quiet WA logger drops) and then stops retrying it, so without this check a
+// phone that has rotated to app-state keys this device never received leaves
+// every mute silently ignored. Warn once per connection so the journal says
+// why muted chats still alert.
+let preferenceSyncWarned = false
+
+async function checkPreferenceSync() {
+  if (!authKeys || preferenceSyncWarned) return
+  try {
+    const versions = await authKeys.get('app-state-sync-version', APP_STATE_COLLECTIONS)
+    const missing = APP_STATE_COLLECTIONS.filter((name) => !versions[name])
+    if (!missing.includes('regular_high')) return
+    preferenceSyncWarned = true
+    logger.warn(
+      { missing },
+      'app-state sync failed: mute/archive preferences from the phone are not being applied. ' +
+      'This usually means the phone rotated its app-state keys and this device never received them; ' +
+      'run `omarchy-whatsapp logout` and link again to fix it'
+    )
+  } catch (err) {
+    logger.debug({ err }, 'preference sync check failed')
+  }
 }
 
 function sleep(ms) {
@@ -797,6 +825,8 @@ async function connect() {
 
     const { state: authState, saveCreds } = await useMultiFileAuthState(authDir)
     creds = authState.creds
+    authKeys = authState.keys
+    preferenceSyncWarned = false
     if (!isLinked() && !pairingWanted) {
       needsLogin = true
       pairingStopped = true
@@ -804,6 +834,18 @@ async function connect() {
       connecting = false
       pushState()
       return
+    }
+
+    // On a fresh link (or if the local app-state cache is incomplete), accept
+    // WhatsApp's initial recent-history sync. Once the collections are cached,
+    // don't ask for history again on every reconnect. Baileys uses this callback
+    // to decide whether to process history notifications even when
+    // syncFullHistory is false.
+    const appStateVersions = await authState.keys.get('app-state-sync-version', APP_STATE_COLLECTIONS)
+    const missingAppState = APP_STATE_COLLECTIONS.filter((name) => !appStateVersions?.[name])
+    const needsAppStateBootstrap = missingAppState.length > 0
+    if (needsAppStateBootstrap) {
+      logger.info({ missing: missingAppState }, 'sync: app-state bootstrap needed')
     }
 
     const { version } = await fetchLatestBaileysVersion().catch(() => ({ version: undefined }))
@@ -831,8 +873,7 @@ async function connect() {
       fireInitQueries: true,
       connectTimeoutMs: 30000,
       defaultQueryTimeoutMs: 30000,
-      // Link previews and media thumbnails are never rendered here.
-      shouldSyncHistoryMessage: () => true,
+      shouldSyncHistoryMessage: () => needsAppStateBootstrap,
       // Lets Baileys retry / poll-decrypt using messages we already stored.
       getMessage: getStoredMessage
     })
@@ -870,12 +911,6 @@ async function connect() {
         pushState()
         pushChats()
         setTimeout(() => {
-          pullLatestFromWhatsApp()
-            .catch((err) => logger.debug({ err }, 'startup resync failed'))
-            .finally(() => {
-              pushState()
-              pushChats()
-            })
           resolveContactLids().catch((err) => logger.debug({ err }, 'contact resolve failed'))
         }, 800).unref?.()
         syncListsSoon(4000)
@@ -953,6 +988,7 @@ async function connect() {
 
     sock.ev.on('messaging-history.set', ({ chats, contacts, messages, isLatest }) => {
       if (sock !== thisSocket) return
+      checkPreferenceSync().catch((err) => logger.debug({ err }, 'preference sync check failed'))
       const before = store.totalUnread()
       applyContacts(contacts)
       applyChatMetadata(chats)
@@ -1244,7 +1280,7 @@ async function handleCommand(payload, reply) {
           await pullLatestFromWhatsApp()
           await syncLists()
         } catch (err) {
-          logger.debug({ err }, 'refresh: whatsapp sync failed')
+          logger.warn({ err }, 'refresh: whatsapp sync failed')
         } finally {
           refreshInFlight = false
         }
